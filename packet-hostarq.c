@@ -189,6 +189,83 @@ dissect_hostarq(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 
 
+/* special RESET type frames */
+#define NMPM1FCPJTAG0_PORT 1700
+#define NMPM1FCPJTAG1_PORT 1701
+#define NMPM1FCPJTAG2_PORT 1702
+#define NMPM1FCPJTAG3_PORT 1703
+#define NMPM1FCPSYSSTART_PORT 1800
+#define NMPM1FCPRESET_PORT 1801
+#define NMPM1FCPHOSTARQRESET_PORT 45054
+
+static int proto_nmpm1fcp_special = -1;
+
+void
+proto_reg_handoff_nmpm1fcp_special(void)
+{
+	static dissector_handle_t nmpm1fcp_jtag_handle;
+	static dissector_handle_t nmpm1fcp_reset_handle;
+	static dissector_handle_t nmpm1fcp_sysstart_handle;
+	static dissector_handle_t nmpm1fcp_hostarqreset_handle;
+
+	nmpm1fcp_jtag_handle = create_dissector_handle(dissect_nmpm1fcp_jtag, proto_nmpm1fcp_special);
+	dissector_add_uint("udp.port", NMPM1FCPJTAG0_PORT, nmpm1fcp_jtag_handle);
+	dissector_add_uint("udp.port", NMPM1FCPJTAG1_PORT, nmpm1fcp_jtag_handle);
+	dissector_add_uint("udp.port", NMPM1FCPJTAG2_PORT, nmpm1fcp_jtag_handle);
+	dissector_add_uint("udp.port", NMPM1FCPJTAG3_PORT, nmpm1fcp_jtag_handle);
+
+	nmpm1fcp_reset_handle = create_dissector_handle(dissect_nmpm1fcp_reset, proto_nmpm1fcp_special);
+	dissector_add_uint("udp.port", NMPM1FCPRESET_PORT, nmpm1fcp_reset_handle);
+
+	nmpm1fcp_sysstart_handle = create_dissector_handle(dissect_nmpm1fcp_sysstart, proto_nmpm1fcp_special);
+	dissector_add_uint("udp.port", NMPM1FCPSYSSTART_PORT, nmpm1fcp_sysstart_handle);
+
+	nmpm1fcp_hostarqreset_handle = create_dissector_handle(dissect_nmpm1fcp_hostarqreset, proto_nmpm1fcp_special);
+	dissector_add_uint("udp.port", NMPM1FCPHOSTARQRESET_PORT, nmpm1fcp_hostarqreset_handle);
+}
+
+
+static void
+dissect_nmpm1fcp_jtag(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
+	col_set_str(pinfo->cinfo, COL_PROTOCOL, "FPGAJTAG");
+	col_add_str(pinfo->cinfo, COL_INFO, "");
+	// nothing yet
+}
+
+static void
+dissect_nmpm1fcp_reset(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
+	guint8 tmp;
+	col_set_str(pinfo->cinfo, COL_PROTOCOL, "FPGARESET");
+
+	tmp = tvb_get_guint8(tvb, 0);
+	col_add_fstr(pinfo->cinfo, COL_INFO, "Reset: %x", tmp);
+}
+
+static void
+dissect_nmpm1fcp_sysstart(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
+	guint8 tmp;
+	col_set_str(pinfo->cinfo, COL_PROTOCOL, "FPGASYSSTART");
+
+	tmp = tvb_get_guint8(tvb, 0);
+	col_add_fstr(pinfo->cinfo, COL_INFO, "SysStart %s", tmp ? "on" : "off");
+}
+
+static void
+dissect_nmpm1fcp_hostarqreset(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
+	guint32 master_timeout, delay_ack, flush_count;
+	col_set_str(pinfo->cinfo, COL_PROTOCOL, "FPGASYSSTART");
+
+	col_set_str(pinfo->cinfo, COL_PROTOCOL, "HostARQ Reset");
+
+	master_timeout = tvb_get_ntohl(tvb, 4);
+	delay_ack      = tvb_get_ntohl(tvb, 8);
+	flush_count    = tvb_get_ntohl(tvb, 12);
+
+	col_add_fstr(pinfo->cinfo, COL_INFO, "Master timeout %u, delay ack %u, flush count %u", master_timeout, delay_ack, flush_count);
+}
+
+
+
 
 
 
