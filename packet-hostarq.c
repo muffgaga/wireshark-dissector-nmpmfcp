@@ -238,7 +238,17 @@ dissect_nmpm1fcp_reset(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "FPGARESET");
 
 	tmp = tvb_get_guint8(tvb, 0);
-	col_add_fstr(pinfo->cinfo, COL_INFO, "Reset: %x", tmp);
+	if (tmp == 0x55) {
+		tmp = tvb_get_guint8(tvb, 3);
+		col_add_fstr(pinfo->cinfo, COL_INFO, "Reset: Core %u FPGADNC %u DDR2 %u DDR2SODIMM %u ARQ %u",
+			tmp>>0 & 0x1,
+			tmp>>1 & 0x1,
+			tmp>>2 & 0x1,
+			tmp>>3 & 0x1,
+			tmp>>4 & 0x1
+		);
+	} else
+		col_add_str(pinfo->cinfo, COL_INFO, "incorrect, wrong magic number");
 }
 
 static void
@@ -247,7 +257,14 @@ dissect_nmpm1fcp_sysstart(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "FPGASYSSTART");
 
 	tmp = tvb_get_guint8(tvb, 0);
-	col_add_fstr(pinfo->cinfo, COL_INFO, "SysStart %s", tmp ? "on" : "off");
+	if (tmp == 0x55) {
+		tmp = tvb_get_guint8(tvb, 3);
+		col_add_fstr(pinfo->cinfo, COL_INFO, "SysStart %s", tmp ? "on" : "off");
+	} else if (tmp == 0xc0 && tvb_get_guint8(tvb, 1) == 0x07) {
+		tmp = tvb_get_guint8(tvb, 3);
+		col_add_fstr(pinfo->cinfo, COL_INFO, "SysStart Ack (deprecated): %s", tmp ? "on" : "off");
+	} else
+		col_add_str(pinfo->cinfo, COL_INFO, "incorrect, wrong magic number");
 }
 
 static void
@@ -275,8 +292,8 @@ dissect_nmpm1fcp_hostarqreset(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 static int proto_nmpm1fcp = -1;
 static gint ett_nmpm1fcp = -1;
 	
-#define FPGACONFIG_STR       1<<(32-9)
-#define FPGACONFIG_EPL       1<<(32-8)
+#define FPGACONFIG_PTR       1<<(32-9)
+#define FPGACONFIG_FPL       1<<(32-8)
 #define FPGACONFIG_STC       1<<(32-7)
 #define FPGACONFIG_STP       1<<(32-6)
 #define FPGACONFIG_SOT       1<<(32-5)
@@ -284,6 +301,8 @@ static gint ett_nmpm1fcp = -1;
 #define FPGACONFIG_STE       1<<(32-3)
 #define FPGACONFIG_CTM       1<<(32-2)
 #define FPGACONFIG_CPM       1<<(32-1)
+
+#define FPGATRACEDATA_FM     1<<(32-1)
 
 static int hf_nmpm1fcp_pdu_fpgaconfig_epl = -1;
 static int hf_nmpm1fcp_pdu_fpgaconfig_str = -1;
@@ -312,6 +331,7 @@ static int hf_nmpm1fcp_pdu_hicanncfgdata_data = -1;
 
 static int hf_nmpm1fcp_pdu_fpgatracedata_timestamp = -1;
 static int hf_nmpm1fcp_pdu_fpgatracedata_label = -1;
+static int hf_nmpm1fcp_pdu_fpgatracedata_fm = -1;
 static int hf_nmpm1fcp_pdu_fpgatracedata_overflow = -1;
 static int hf_nmpm1fcp_pdu_fpgatracedata_flags = -1;
 
@@ -339,13 +359,13 @@ proto_register_nmpm1fcp(void)
 		{ &hf_nmpm1fcp_pdu_fpgaconfig_str,
 			{ "FPGA Config Start Enable Systime Replace", "fpgaconfig.str",
 				FT_BOOLEAN, 32,
-				NULL, FPGACONFIG_STR,
+				NULL, FPGACONFIG_PTR,
 				NULL, HFILL }
 		},
 		{ &hf_nmpm1fcp_pdu_fpgaconfig_epl,
 			{ "FPGA Config Enable Loopback", "fpgaconfig.epl",
 				FT_BOOLEAN, 32,
-				NULL, FPGACONFIG_EPL,
+				NULL, FPGACONFIG_FPL,
 				NULL, HFILL }
 		},
 		{ &hf_nmpm1fcp_pdu_fpgaconfig_stc,
@@ -504,6 +524,12 @@ proto_register_nmpm1fcp(void)
 				NULL, 0x0,
 				NULL, HFILL }
 		},
+		{ &hf_nmpm1fcp_pdu_fpgatracedata_fm,
+			{ "HICANN Trace Data Flags", "fpgatracedata.fm",
+				FT_BOOLEAN, 1,
+				NULL, FPGATRACEDATA_FM,
+				NULL, HFILL }
+		},
 		{ &hf_nmpm1fcp_pdu_fpgatracedata_flags,
 			{ "HICANN Trace Data Flags", "fpgatracedata.flags",
 				FT_UINT8, BASE_DEC,
@@ -560,11 +586,11 @@ dissect_nmpm1fcp_fpgaconfig(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "FPGACONFIG");
 
-	tmp  = tvb_get_ntohl(tvb, 4); // skip type-len
+	tmp  = tvb_get_ntohl(tvb, 8); // skip type-len
 	if (tmp) {
 		col_append_str(pinfo->cinfo, COL_INFO, ", ");
-		if (tmp & FPGACONFIG_STR) col_append_str(pinfo->cinfo, COL_INFO, "STR ");
-		if (tmp & FPGACONFIG_EPL) col_append_str(pinfo->cinfo, COL_INFO, "EPL ");
+		if (tmp & FPGACONFIG_PTR) col_append_str(pinfo->cinfo, COL_INFO, "PTR ");
+		if (tmp & FPGACONFIG_FPL) col_append_str(pinfo->cinfo, COL_INFO, "FPL ");
 		if (tmp & FPGACONFIG_STC) col_append_str(pinfo->cinfo, COL_INFO, "STC ");
 		if (tmp & FPGACONFIG_STP) col_append_str(pinfo->cinfo, COL_INFO, "STP ");
 		if (tmp & FPGACONFIG_SOT) col_append_str(pinfo->cinfo, COL_INFO, "SOT ");
@@ -736,6 +762,7 @@ dissect_nmpm1fcp_fpgatracedata(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
 			tmp = tvb_get_guint8(tvb, offset) & 0x3;
 			switch (tmp) {
 				case 0:
+					proto_tree_add_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_fm, tvb, offset, 4, ENC_BIG_ENDIAN);
 					proto_tree_add_bits_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_label,     tvb, offset*8+5, 12, ENC_BIG_ENDIAN);
 					offset += 2;
 					proto_tree_add_bits_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_timestamp, tvb, offset*8+1, 15, ENC_BIG_ENDIAN);
