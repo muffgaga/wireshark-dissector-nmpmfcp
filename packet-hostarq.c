@@ -97,13 +97,13 @@ proto_register_hostarq(void)
 				FT_UINT32, BASE_DEC,
 				NULL, 0x0,
 				NULL, HFILL }
-		},
+		}/*,
 		{ &hf_hostarq_pdu_valid,
 			{ "HostARQ PDU Valid", "hostarq.valid",
 				FT_UINT32, BASE_HEX,
 				VALS(packettypenames), 0x0,
 				NULL, HFILL }
-		}
+		} */
 	};
 
 	/* Setup protocol subtree array */
@@ -135,8 +135,8 @@ dissect_hostarq(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
 	gint offset = 0;
 	guint32 packet_ack  = tvb_get_ntohl(tvb, 0);
-	guint32 packet_seq  = tvb_get_ntohl(tvb, 4);
-	guint32 packet_type = tvb_get_ntohl(tvb, 8);
+	guint32 packet_seq;
+	//guint32 packet_type = tvb_get_ntohl(tvb, 10);
 	guint16 pdu_type = 0;
 	guint16 pdu_len = 0;
 	tvbuff_t *next_tvb;
@@ -144,16 +144,20 @@ dissect_hostarq(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "HostARQ");
 	/* Clear out stuff in the info column */
 	col_clear(pinfo->cinfo,COL_INFO);
-	if (!packet_type)
+	if (tvb_reported_length(tvb) <= 4)
+	//if (!packet_type)
 		col_add_fstr(pinfo->cinfo, COL_INFO, "ack %u", packet_ack);
+	// ADD 4 < size < 12 => fail
 	else {
+		packet_seq = tvb_get_ntohl(tvb, 4);
 		pdu_type = tvb_get_ntohs(tvb, 12);
 		pdu_len  = tvb_get_ntohs(tvb, 14);
-		col_add_fstr(pinfo->cinfo, COL_INFO, "ack %u, seq %u, type %s, len %u",
+		col_add_fstr(pinfo->cinfo, COL_INFO, "ack %5u, seq %5u, type %s, len %3u, diff %u",
 			packet_ack,
 			packet_seq,
 			val_to_str(pdu_type, pdutypenames, "Unknown (0x%02x)"),
-			pdu_len
+			pdu_len,
+			(packet_ack > packet_seq) ? packet_ack - packet_seq : packet_seq - packet_ack // DEBUG
 		);
 	}
 
@@ -166,13 +170,14 @@ dissect_hostarq(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		hostarq_tree = proto_item_add_subtree(ti, ett_hostarq);
 		proto_tree_add_item(hostarq_tree, hf_hostarq_pdu_ack, tvb, offset, 4, ENC_BIG_ENDIAN);
 		offset += 4;
-		proto_tree_add_item(hostarq_tree, hf_hostarq_pdu_seq, tvb, offset, 4, ENC_BIG_ENDIAN);
-		offset += 4;
-		proto_tree_add_item(hostarq_tree, hf_hostarq_pdu_valid, tvb, offset, 4, ENC_BIG_ENDIAN);
-		offset += 4;
+
 
 		// go to next dissector if valid data
-		if (packet_type) {
+		if (tvb_reported_length_remaining(tvb, offset)) {
+			proto_tree_add_item(hostarq_tree, hf_hostarq_pdu_seq, tvb, offset, 4, ENC_BIG_ENDIAN);
+			offset += 4;
+
+		//if (packet_type) {
 			next_tvb = tvb_new_subset(tvb, offset, -1, -1);
 
 			// sniff ahead :)
