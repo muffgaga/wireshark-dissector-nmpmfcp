@@ -150,8 +150,8 @@ dissect_hostarq(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	// ADD 4 < size < 12 => fail
 	else {
 		packet_seq = tvb_get_ntohl(tvb, 4);
-		pdu_type = tvb_get_ntohs(tvb, 12);
-		pdu_len  = tvb_get_ntohs(tvb, 14);
+		pdu_type = tvb_get_ntohs(tvb, 8);
+		pdu_len  = tvb_get_ntohs(tvb, 10);
 		col_add_fstr(pinfo->cinfo, COL_INFO, "ack %5u, seq %5u, type %s, len %3u, diff %u",
 			packet_ack,
 			packet_seq,
