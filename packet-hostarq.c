@@ -34,6 +34,9 @@
 
 #define HOSTARQ_PORT 1234
 
+#define HOSTARQ_LOOP 0x8001
+#define HOSTARQ_CFG  0x8002
+
 #define JTAGBULK     0x0C33
 #define JTAGSINGLE   0x0C3A
 #define I2C          0x0CCC
@@ -51,6 +54,8 @@ static const value_string pdutypenames[] = {
 	// copied from host_al_controller.h
 	{ JTAGBULK,     "JTAGBULK" },
 	{ JTAGSINGLE,   "JTAGSINGLE" },
+	{ HOSTARQ_CFG,  "HOSTARQ_CFG" },
+	{ HOSTARQ_LOOP, "HOSTARQ_LOOP" },
 	{ I2C,          "I2C" },
 	{ FPGATRACE,    "FPGATRACE" },
 	{ HICANNREAD,   "HICANNREAD" },
@@ -146,18 +151,19 @@ dissect_hostarq(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	col_clear(pinfo->cinfo,COL_INFO);
 	if (tvb_reported_length(tvb) <= 4)
 	//if (!packet_type)
-		col_add_fstr(pinfo->cinfo, COL_INFO, "ack %u", packet_ack);
+		col_add_fstr(pinfo->cinfo, COL_INFO, "ack %5u", packet_ack);
 	// ADD 4 < size < 12 => fail
 	else {
 		packet_seq = tvb_get_ntohl(tvb, 4);
 		pdu_type = tvb_get_ntohs(tvb, 8);
 		pdu_len  = tvb_get_ntohs(tvb, 10);
-		col_add_fstr(pinfo->cinfo, COL_INFO, "ack %5u, seq %5u, type %s, len %3u, diff %u",
+		col_add_fstr(pinfo->cinfo, COL_INFO, "ack %5u, seq %5u, type %14s, len %3u", /*, diff %u",*/
 			packet_ack,
 			packet_seq,
 			val_to_str(pdu_type, pdutypenames, "Unknown (0x%02x)"),
-			pdu_len,
+			pdu_len/*,
 			(packet_ack > packet_seq) ? packet_ack - packet_seq : packet_seq - packet_ack // DEBUG
+			*/
 		);
 	}
 
@@ -274,16 +280,9 @@ dissect_nmpm1fcp_sysstart(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
 
 static void
 dissect_nmpm1fcp_hostarqreset(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
-	guint32 master_timeout, delay_ack, flush_count;
-	col_set_str(pinfo->cinfo, COL_PROTOCOL, "FPGASYSSTART");
-
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "HostARQ Reset");
-
-	master_timeout = tvb_get_ntohl(tvb, 4);
-	delay_ack      = tvb_get_ntohl(tvb, 8);
-	flush_count    = tvb_get_ntohl(tvb, 12);
-
-	col_add_fstr(pinfo->cinfo, COL_INFO, "Master timeout %u, delay ack %u, flush count %u", master_timeout, delay_ack, flush_count);
+	col_add_str(pinfo->cinfo, COL_INFO, "");
+	/* other stuff was moved to HostARQ Cfg type */
 }
 
 
@@ -572,10 +571,14 @@ proto_register_nmpm1fcp(void)
 void
 proto_reg_handoff_nmpm1fcp(void)
 {
+	static dissector_handle_t nmpm1fcp_hostarqcfg_handle;
 	static dissector_handle_t nmpm1fcp_fpgaconfig_handle;
 	static dissector_handle_t nmpm1fcp_fpgaplayback_handle;
 	static dissector_handle_t nmpm1fcp_hicanncfgdata_handle;
 	static dissector_handle_t nmpm1fcp_fpgatracedata_handle;
+
+	nmpm1fcp_hostarqcfg_handle = create_dissector_handle(dissect_nmpm1fcp_hostarqcfg, proto_nmpm1fcp);
+	dissector_add_uint("nmpm1fcp.type", HOSTARQ_CFG, nmpm1fcp_hostarqcfg_handle);
 
 	nmpm1fcp_fpgaconfig_handle = create_dissector_handle(dissect_nmpm1fcp_fpgaconfig, proto_nmpm1fcp);
 	dissector_add_uint("nmpm1fcp.type", FPGACONFIG, nmpm1fcp_fpgaconfig_handle);
@@ -590,6 +593,27 @@ proto_reg_handoff_nmpm1fcp(void)
 	dissector_add_uint("nmpm1fcp.type", FPGATRACE, nmpm1fcp_fpgatracedata_handle);
 	// add other dissector foos here
 }
+
+static void
+dissect_nmpm1fcp_hostarqcfg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
+	guint64 max_nrframes = 0, max_winsiz = 0, max_pduwords = 0;
+	guint offset = 4; // skip typelen
+
+	max_nrframes = tvb_get_ntoh64(tvb, offset);
+	offset += 8;
+	max_winsiz = tvb_get_ntoh64(tvb, offset);
+	offset += 8;
+	max_pduwords = tvb_get_ntoh64(tvb, offset);
+	offset += 8;
+
+	col_set_str(pinfo->cinfo, COL_INFO, "HostARQ Config");
+	col_append_fstr(pinfo->cinfo, COL_INFO,
+					": MAX_NRFRAMES %llu MAX_WINSIZ %llu MAX_PDUWORDS %llu",
+					(long long unsigned) max_nrframes,
+					(long long unsigned) max_winsiz,
+					(long long unsigned) max_pduwords);
+}
+
 
 static void
 dissect_nmpm1fcp_fpgaconfig(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
@@ -716,7 +740,7 @@ dissect_nmpm1fcp_fpgaplayback(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 					proto_tree_add_bits_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanntag, tvb, offset*8+6, 1, ENC_BIG_ENDIAN);
 					// 7 more bits
 					tmp64    = tvb_get_ntoh64(tvb, offset) & 0xFFFffffFFFFffff; // remaining 49 bits
-					proto_tree_add_uint64_format(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanndata, tvb, offset, 8, tmp64, "HICANN Data: 0x%llx", tmp64);
+					proto_tree_add_uint64_format(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanndata, tvb, offset, 8, tmp64, "HICANN Data: 0x%llx", (long long unsigned)tmp64);
 					//proto_tree_add_uint64(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanndata, tvb, offset, 8, tmp64);
 					offset += 7;
 				}
@@ -744,7 +768,7 @@ dissect_nmpm1fcp_hicanncfgdata(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
 	gint offset = 4;
 	size_t ii = 0;
 
-	col_set_str(pinfo->cinfo, COL_PROTOCOL, "HICANNCFGDATA");
+	col_set_str(pinfo->cinfo, COL_PROTOCOL, "HICANNCONFIG");
 
 	//col_append_fstr(pinfo->cinfo, COL_INFO, " DNC %u HICANN %u", (unsigned)dnc, (unsigned)hicann);
 
