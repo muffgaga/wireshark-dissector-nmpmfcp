@@ -12,6 +12,7 @@ Building
     $ cd wireshark-1.8.2/plugins
     $ git clone https://github.com/muffgaga/wireshark-dissector-nmpmfcp.git hostarq
     # add "hostarq" to @SUBDIRS@ variable in plugins/Makefile.am
+    # add "plugins/hostarq/Makefile" to "AC_OUTPUT" in configure.ac
     $ ./autogen.sh
     $ ./configure
     $ make
