@@ -295,7 +295,7 @@ dissect_nmpm1fcp_hostarqreset(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 
 static int proto_nmpm1fcp = -1;
 static gint ett_nmpm1fcp = -1;
-	
+
 #define FPGACONFIG_PTR       1<<(32-9)
 #define FPGACONFIG_FPL       1<<(32-8)
 #define FPGACONFIG_STC       1<<(32-7)
@@ -306,7 +306,12 @@ static gint ett_nmpm1fcp = -1;
 #define FPGACONFIG_CTM       1<<(32-2)
 #define FPGACONFIG_CPM       1<<(32-1)
 
-#define FPGATRACEDATA_FM     1<<(32-1)
+#define FPGAPLAYBACK_HICANN_WRITE 0x1
+#define FPGAPLAYBACK_HICANN_READ  0x80
+
+#define FPGATRACEDATA_OVERFLOW 1 << 7
+#define FPGATRACEDATA_INVALID    1 << 6
+#define FPGATRACEDATA_FM       1 << 5
 
 static int hf_nmpm1fcp_pdu_fpgaconfig_epl = -1;
 static int hf_nmpm1fcp_pdu_fpgaconfig_str = -1;
@@ -317,28 +322,35 @@ static int hf_nmpm1fcp_pdu_fpgaconfig_stt = -1;
 static int hf_nmpm1fcp_pdu_fpgaconfig_ste = -1;
 static int hf_nmpm1fcp_pdu_fpgaconfig_ctm = -1;
 static int hf_nmpm1fcp_pdu_fpgaconfig_cpm = -1;
-		
+
 static int hf_nmpm1fcp_pdu_fpgaplayback_fpgatime = -1;
 static int hf_nmpm1fcp_pdu_fpgaplayback_fpgacount = -1;
 static int hf_nmpm1fcp_pdu_fpgaplayback_label = -1;
 static int hf_nmpm1fcp_pdu_fpgaplayback_timestamp = -1;
-static int hf_nmpm1fcp_pdu_fpgaplayback_hicanndata = -1;
-static int hf_nmpm1fcp_pdu_fpgaplayback_hicanntag = -1;
-static int hf_nmpm1fcp_pdu_fpgaplayback_hicanndest = -1;
+
+static int hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_dnc = -1;
+static int hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_dest = -1;
+static int hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_tag = -1;
+static int hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_write = -1;
+static int hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_read = -1;
+static int hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_payload = -1;
+
 static int hf_nmpm1fcp_pdu_fpgaplayback_overflow = -1;
 static int hf_nmpm1fcp_pdu_fpgaplayback_trigger = -1;
+
 static int hf_nmpm1fcp_pdu_hicanncfgdata_dnc = -1;
 static int hf_nmpm1fcp_pdu_hicanncfgdata_hicann = -1;
 static int hf_nmpm1fcp_pdu_hicanncfgdata_tag = -1;
 static int hf_nmpm1fcp_pdu_hicanncfgdata_write = -1;
 static int hf_nmpm1fcp_pdu_hicanncfgdata_read = -1;
-static int hf_nmpm1fcp_pdu_hicanncfgdata_data = -1;
+static int hf_nmpm1fcp_pdu_hicanncfgdata_payload = -1;
 
 static int hf_nmpm1fcp_pdu_fpgatracedata_timestamp = -1;
 static int hf_nmpm1fcp_pdu_fpgatracedata_label = -1;
+static int hf_nmpm1fcp_pdu_fpgatracedata_overflows = -1;
 static int hf_nmpm1fcp_pdu_fpgatracedata_fm = -1;
+static int hf_nmpm1fcp_pdu_fpgatracedata_invalid = -1;
 static int hf_nmpm1fcp_pdu_fpgatracedata_overflow = -1;
-static int hf_nmpm1fcp_pdu_fpgatracedata_flags = -1;
 
 
 
@@ -443,21 +455,39 @@ proto_register_nmpm1fcp(void)
 				NULL, HFILL }
 		},
 		/* HICANN Configuration */
-		{ &hf_nmpm1fcp_pdu_fpgaplayback_hicanndata,
-			{ "FPGA Playback HICANN Data", "fpgaplayback.hicanndata",
+		{ &hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_dnc,
+			{ "FPGA Playback HICANN CfgData DNC", "fpgaplayback.hicanncfgdata.dnc",
+				FT_UINT8, BASE_DEC,
+				NULL, 0x0,
+				NULL, HFILL }
+		},
+		{ &hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_dest,
+			{ "FPGA Playback HICANN CfgData Dest", "fpgaplayback.hicanncfgdata.dest",
+				FT_UINT8, BASE_DEC,
+				NULL, 0x0,
+				NULL, HFILL }
+		},
+		{ &hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_tag,
+			{ "FPGA Playback HICANN CfgData Tag", "fpgaplayback.hicanncfgdata.tag",
+				FT_UINT8, BASE_DEC,
+				NULL, 0x0,
+				NULL, HFILL }
+		},
+		{ &hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_write,
+			{ "FPGA Playback HICANN CfgData Write", "fpgaplayback.hicanncfgdata.write",
+				FT_BOOLEAN, 8,
+				NULL, FPGAPLAYBACK_HICANN_WRITE,
+				NULL, HFILL }
+		},
+		{ &hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_read,
+			{ "FPGA Playback HICANN CfgData Read", "fpgaplayback.hicanncfgdata.read",
+				FT_BOOLEAN, 8,
+				NULL, FPGAPLAYBACK_HICANN_READ,
+				NULL, HFILL }
+		},
+		{ &hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_payload,
+			{ "FPGA Playback HICANN CfgData Payload", "fpgaplayback.hicanncfgdata.payload",
 				FT_UINT64, BASE_DEC,
-				NULL, 0x0,
-				NULL, HFILL }
-		},
-		{ &hf_nmpm1fcp_pdu_fpgaplayback_hicanntag,
-			{ "FPGA Playback HICANN Tag", "fpgaplayback.hicanntag",
-				FT_UINT8, BASE_DEC,
-				NULL, 0x0,
-				NULL, HFILL }
-		},
-		{ &hf_nmpm1fcp_pdu_fpgaplayback_hicanndest,
-			{ "FPGA Playback HICANN Dest", "fpgaplayback.hicanndest",
-				FT_UINT8, BASE_DEC,
 				NULL, 0x0,
 				NULL, HFILL }
 		},
@@ -508,8 +538,8 @@ proto_register_nmpm1fcp(void)
 				NULL, 0x0,
 				NULL, HFILL }
 		},
-		{ &hf_nmpm1fcp_pdu_hicanncfgdata_data,
-			{ "HICANN Configuration Data", "hicanncfgdata.data",
+		{ &hf_nmpm1fcp_pdu_hicanncfgdata_payload,
+			{ "HICANN Configuration Data", "hicanncfgdata.payload",
 				FT_UINT64, BASE_DEC,
 				NULL, 0x0,
 				NULL, HFILL }
@@ -529,22 +559,28 @@ proto_register_nmpm1fcp(void)
 				NULL, 0x0,
 				NULL, HFILL }
 		},
-		{ &hf_nmpm1fcp_pdu_fpgatracedata_overflow,
-			{ "HICANN Trace Data Overflow", "fpgatracedata.overflow",
+		{ &hf_nmpm1fcp_pdu_fpgatracedata_overflows,
+			{ "HICANN Trace Data Overflow", "fpgatracedata.overflows",
 				FT_UINT32, BASE_DEC,
 				NULL, 0x0,
 				NULL, HFILL }
 		},
 		{ &hf_nmpm1fcp_pdu_fpgatracedata_fm,
-			{ "HICANN Trace Data Flags", "fpgatracedata.fm",
-				FT_BOOLEAN, 1,
+			{ "HICANN Trace Data FM", "fpgatracedata.fm",
+				FT_BOOLEAN, 8,
 				NULL, FPGATRACEDATA_FM,
 				NULL, HFILL }
 		},
-		{ &hf_nmpm1fcp_pdu_fpgatracedata_flags,
-			{ "HICANN Trace Data Flags", "fpgatracedata.flags",
-				FT_UINT8, BASE_DEC,
-				NULL, 0x0,
+		{ &hf_nmpm1fcp_pdu_fpgatracedata_invalid,
+			{ "HICANN Trace Data Invalid Marker", "fpgatracedata.invalid",
+				FT_BOOLEAN, 8,
+				NULL, FPGATRACEDATA_INVALID,
+				NULL, HFILL }
+		},
+		{ &hf_nmpm1fcp_pdu_fpgatracedata_overflow,
+			{ "HICANN Trace Data Overflow Marker", "fpgatracedata.overflow",
+				FT_BOOLEAN, 8,
+				NULL, FPGATRACEDATA_OVERFLOW,
 				NULL, HFILL }
 		},
 
@@ -588,7 +624,7 @@ proto_reg_handoff_nmpm1fcp(void)
 
 	nmpm1fcp_hicanncfgdata_handle = create_dissector_handle(dissect_nmpm1fcp_hicanncfgdata, proto_nmpm1fcp);
 	dissector_add_uint("nmpm1fcp.type", HICANNCONFIG, nmpm1fcp_hicanncfgdata_handle);
-	
+
 	nmpm1fcp_fpgatracedata_handle = create_dissector_handle(dissect_nmpm1fcp_fpgatracedata, proto_nmpm1fcp);
 	dissector_add_uint("nmpm1fcp.type", FPGATRACE, nmpm1fcp_fpgatracedata_handle);
 	// add other dissector foos here
@@ -619,7 +655,7 @@ static void
 dissect_nmpm1fcp_fpgaconfig(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
 	gint offset = 0;
 	guint32 tmp = 0;
-	
+
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "FPGACONFIG");
 
 	tmp  = tvb_get_ntohl(tvb, 8); // skip type-len
@@ -642,7 +678,7 @@ dissect_nmpm1fcp_fpgaconfig(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 		ti = proto_tree_add_item(tree, proto_nmpm1fcp, tvb, 0, -1, ENC_NA); // consume all, nothing encapsulated here
 		fpgaconfig_tree = proto_item_add_subtree(ti, ett_nmpm1fcp);
-		
+
 		offset += 4; // TYPLEN
 		offset += 4; // upper bits of config frame are unused
 
@@ -672,7 +708,7 @@ dissect_nmpm1fcp_fpgaplayback(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 	guint16 len = tvb_get_ntohs(tvb, 2);
 	size_t i = 0, ii = 0;
 	guint16 group_len = 0;
-	
+
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "FPGAPLAYBACK");
 
 	//pbtype = tvb_get_ntohs(tvb, 4);
@@ -697,9 +733,9 @@ dissect_nmpm1fcp_fpgaplayback(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 		for (i = 0; i < len; i++) {
 
 			group_len = (tvb_get_ntohs(tvb, offset+4) >> 2) & 0x3fff;
-			is_data = !((tvb_get_ntohs(tvb, offset+6)) & 0x1);
-			is_pulse = !((tvb_get_ntohs(tvb, offset+4)) & 0x1);
-			is_overflow = !((tvb_get_ntohs(tvb, offset+6)) & 0x2) >> 1;
+			is_pulse    = !((tvb_get_ntohs(tvb, offset+4)) & 0x1);
+			is_data     = !((tvb_get_ntohs(tvb, offset+6)) & 0x1);
+			is_overflow = !(((tvb_get_ntohs(tvb, offset+6)) & 0x2) >> 1);
 
 			if (is_data && is_pulse) {
 				/* Pulse group */
@@ -715,14 +751,15 @@ dissect_nmpm1fcp_fpgaplayback(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 				offset += 2;
 
 				for (ii = 1; ii < group_len; ii++) {
-					proto_tree_add_bits_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_label,     tvb, offset* 8+2, 12, ENC_BIG_ENDIAN);
+					guint const endian_shitfuck = (ii % 2) == 1 ? 4 : 0;
+					proto_tree_add_bits_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_label,     tvb, (offset + endian_shitfuck) * 8+2, 12, ENC_BIG_ENDIAN);
 					offset += 2;
-					proto_tree_add_bits_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_timestamp, tvb, offset* 8, 15, ENC_BIG_ENDIAN);
+					proto_tree_add_bits_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_timestamp, tvb, (offset + endian_shitfuck) * 8, 15, ENC_BIG_ENDIAN);
 					offset += 2;
 				}
-				if ((group_len % 2) == 0) // if even, skip 2 bytes padding
-					offset += 2;
-					
+				if ((group_len % 2) == 0) // if even, we have to skip 4 bytes (endian_shitfuck is only for lookup not applied to offset)
+					offset += 4;
+
 			} else if (is_data && !is_pulse) {
 				/* HICANN configuration */
 				i += group_len;
@@ -735,24 +772,25 @@ dissect_nmpm1fcp_fpgaplayback(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 				offset += 2;
 
 				for (ii = 0; ii < group_len; ii++) {
-					proto_tree_add_bits_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanndest, tvb, offset*8, 5, ENC_BIG_ENDIAN);
-					offset += 1; // 1 byte
-					proto_tree_add_bits_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanntag, tvb, offset*8+6, 1, ENC_BIG_ENDIAN);
-					// 7 more bits
-					tmp64    = tvb_get_ntoh64(tvb, offset) & 0xFFFffffFFFFffff; // remaining 49 bits
-					proto_tree_add_uint64_format(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanndata, tvb, offset, 8, tmp64, "HICANN Data: 0x%llx", (long long unsigned)tmp64);
-					//proto_tree_add_uint64(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanndata, tvb, offset, 8, tmp64);
+					tmp64    = tvb_get_ntoh64(tvb, offset) & 0x1ffffFFFFffff; // lower 49 bits are OCP payload
+					proto_tree_add_bits_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_dnc, tvb, offset*8, 2, ENC_BIG_ENDIAN);
+					proto_tree_add_bits_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_dest, tvb, offset*8+2, 3, ENC_BIG_ENDIAN);
+					offset += 1; // 1 byte => 63..56 taken, now MSB == bit 55
+					proto_tree_add_bits_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_tag, tvb, offset*8+5, 2, ENC_BIG_ENDIAN); // bit 49
+					proto_tree_add_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_write, tvb, offset, 1, ENC_BIG_ENDIAN); // bit 48
+					proto_tree_add_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_read, tvb, offset+3, 1, ENC_BIG_ENDIAN);
+					proto_tree_add_uint64_format(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_hicanncfgdata_payload, tvb, offset, 7, tmp64, "HICANN CfgData Payload: 0x%llx", (long long unsigned)tmp64);
 					offset += 7;
 				}
 			} else if (!is_data && is_overflow) {
 				i += 1;
 				/* Timestamp Overflow Indicator */
-				proto_tree_add_bits_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_overflow, tvb, offset*8, 30, ENC_BIG_ENDIAN);
+				proto_tree_add_bits_item(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_overflow, tvb, (offset+4)*8, 30, ENC_BIG_ENDIAN);
 				offset += 8;
 			} else if (!is_data && !is_overflow) {
 				i += 1;
 				/* Wait for next experiment trigger */
-				proto_tree_add_string(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_trigger, tvb, offset*8+2, 64, "Wait for next experiment");
+				proto_tree_add_string(fpgaplayback_tree, hf_nmpm1fcp_pdu_fpgaplayback_trigger, tvb, offset*8, 64, "Wait for next experiment");
 				offset += 8;
 			} else {
 				// WTF
@@ -763,8 +801,8 @@ dissect_nmpm1fcp_fpgaplayback(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 
 static void
 dissect_nmpm1fcp_hicanncfgdata(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
-	//guint16 type = tvb_get_ntohs(tvb, 0);
 	guint16 len = tvb_get_ntohs(tvb, 2);
+	guint64 tmp64 = 0;
 	gint offset = 4;
 	size_t ii = 0;
 
@@ -778,14 +816,15 @@ dissect_nmpm1fcp_hicanncfgdata(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
 
 		ti = proto_tree_add_item(tree, proto_nmpm1fcp, tvb, 0, -1, ENC_NA); // consume all, nothing encapsulated here
 		hicanncfgdata_tree = proto_item_add_subtree(ti, ett_nmpm1fcp);
-	
-		for (ii = 0; ii < len; ii++) { 
+
+		for (ii = 0; ii < len; ii++) {
 			proto_tree_add_bits_item(hicanncfgdata_tree, hf_nmpm1fcp_pdu_hicanncfgdata_dnc, tvb, offset*8, 2, ENC_BIG_ENDIAN);
 			proto_tree_add_bits_item(hicanncfgdata_tree, hf_nmpm1fcp_pdu_hicanncfgdata_hicann, tvb, offset*8+2, 3, ENC_BIG_ENDIAN);
-			proto_tree_add_bits_item(hicanncfgdata_tree, hf_nmpm1fcp_pdu_hicanncfgdata_tag,  tvb, offset*8+2+3+9, 1, ENC_BIG_ENDIAN);
+			proto_tree_add_bits_item(hicanncfgdata_tree, hf_nmpm1fcp_pdu_hicanncfgdata_tag,  tvb, offset*8+2+3+8, 2, ENC_BIG_ENDIAN);
 			proto_tree_add_bits_item(hicanncfgdata_tree, hf_nmpm1fcp_pdu_hicanncfgdata_write,  tvb, offset*8+2+3+9+1, 1, ENC_BIG_ENDIAN);
 			proto_tree_add_bits_item(hicanncfgdata_tree, hf_nmpm1fcp_pdu_hicanncfgdata_read,  tvb, (offset+4)*8, 1, ENC_BIG_ENDIAN);
-			//proto_tree_add_bits_item(hicanncfgdata_tree, hf_nmpm1fcp_pdu_hicanncfgdata_data, tvb, offset*8, 49, ENC_BIG_ENDIAN);
+			tmp64    = tvb_get_ntoh64(tvb, offset) & 0xFFFffffFFFFffff; // remaining 49 bits
+			proto_tree_add_uint64_format(hicanncfgdata_tree, hf_nmpm1fcp_pdu_hicanncfgdata_payload, tvb, offset, 8, tmp64, "HICANN CfgData Payload: 0x%llx", (long long unsigned)tmp64);
 			offset += 8;
 		}
 	}
@@ -807,30 +846,29 @@ dissect_nmpm1fcp_fpgatracedata(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
 
 		ti = proto_tree_add_item(tree, proto_nmpm1fcp, tvb, 0, -1, ENC_NA); // consume all, nothing encapsulated here
 		fpgatracedata_tree = proto_item_add_subtree(ti, ett_nmpm1fcp);
-	
+
 		for (ii = 0; ii < len*2; ii++) { // dword-wise!
-			proto_tree_add_bits_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_flags, tvb, offset*8, 2, ENC_BIG_ENDIAN);
-			tmp = tvb_get_guint8(tvb, offset) & 0x3;
+			tmp = (tvb_get_guint8(tvb, offset) >> 5) & 0x7;
 			switch (tmp) {
-				case 0:
-					proto_tree_add_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_fm, tvb, offset, 4, ENC_BIG_ENDIAN);
+				case 0: // FM off
+				case 1: // FM on
+					proto_tree_add_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_overflow, tvb, offset, 1, ENC_BIG_ENDIAN);
+					proto_tree_add_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_invalid, tvb, offset, 1, ENC_BIG_ENDIAN);
+					proto_tree_add_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_fm, tvb, offset, 1, ENC_BIG_ENDIAN);
 					proto_tree_add_bits_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_label,     tvb, offset*8+5, 12, ENC_BIG_ENDIAN);
-					offset += 2;
-					proto_tree_add_bits_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_timestamp, tvb, offset*8+1, 15, ENC_BIG_ENDIAN);
-					offset += 2;
+					proto_tree_add_bits_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_timestamp, tvb, offset*8+5+12, 15, ENC_BIG_ENDIAN);
+					offset += 4;
 					break;
-				case 1:
-					// just padding...
+				case 2: // just padding in overflow marker... dont tell the user...
+				case 3:
 					proto_tree_add_text(fpgatracedata_tree, tvb, offset, 4, "padding");
 					offset += 4;
 					break;
-				case 2:
-				case 3:
-					//overflow because higher bit high
-					proto_tree_add_bits_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_overflow, tvb, offset*8+1, 31, ENC_BIG_ENDIAN);
-					offset += 4;
-					break;
 				default:
+					//overflow because higher bits high
+					proto_tree_add_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_overflow, tvb, offset, 1, ENC_BIG_ENDIAN);
+					proto_tree_add_bits_item(fpgatracedata_tree, hf_nmpm1fcp_pdu_fpgatracedata_overflows, tvb, offset*8+1, 31, ENC_BIG_ENDIAN);
+					offset += 4;
 					break;
 			}
 		}
